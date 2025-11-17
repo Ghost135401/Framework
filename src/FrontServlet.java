@@ -3,44 +3,40 @@ package servlet;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import java.io.IOException;
+import java.util.*;
+
+import servlet.annotations.Controller;
+import servlet.annotations.Url;
+import servlet.utils.ClassDetector;
+import servlet.utils.MethodInvoker;
 
 public class FrontServlet extends HttpServlet {
 
-    // init est executé une seule fois au lancement de ce servlet
-    @Override
-    public void init() throws ServletException {
-        try {
-
-        } catch (Exception e) {
-            throw new ServletException(e);
-        }
-    }
-
-    // }
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
-        String path = req.getRequestURI();
         ServletContext context = getServletContext();
+        Map<String, MethodInvoker> routes = (Map<String, MethodInvoker>) context.getAttribute("routes");
 
-        // Récupérer le chemin relatif au contexte
-        String servletPath = req.getServletPath();
-        String realPath = context.getRealPath(servletPath);
+        String path = req.getRequestURI().substring(req.getContextPath().length());
+        MethodInvoker invoker = (routes != null) ? routes.get(path) : null;
 
-        // Si c’est un fichier physique, déléguer au servlet par défaut de Tomcat
-        if (realPath != null) {
-            java.io.File file = new java.io.File(realPath);
-            if (file.exists() && file.isFile()) {
-                RequestDispatcher rd = context.getNamedDispatcher("default");
-                rd.forward(req, resp);
-                return;
-            }
-        }
-
-        // Sinon → logique applicative
         resp.setContentType("text/plain");
-        resp.getWriter().print("FrontServlet → " + path);
-    }
 
+        if (invoker != null) {
+            try {
+                Object controller = invoker.getControllerClass().getDeclaredConstructor().newInstance();
+                Object result = invoker.getMethod().invoke(controller);
+                if (result instanceof String) {
+                    String string = (String) result;
+                    resp.getWriter().print(string);
+                }
+            } catch (Exception e) {
+                e.printStackTrace(resp.getWriter());
+            }
+        } else {
+            resp.getWriter().print("404 - Aucun contrôleur trouvé pour " + path);
+        }
+    }
 }
