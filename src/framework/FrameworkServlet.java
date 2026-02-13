@@ -4,6 +4,7 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.util.*;
 
 public abstract class FrameworkServlet extends HttpServlet {
@@ -12,12 +13,12 @@ public abstract class FrameworkServlet extends HttpServlet {
             throws ServletException, IOException {
 
         Map<String, Object> parameters = new HashMap<>();
+        
         Enumeration<String> parameterNames = request.getParameterNames();
-
         while (parameterNames.hasMoreElements()) {
             String paramName = parameterNames.nextElement();
             String[] values = request.getParameterValues(paramName);
-
+            
             if (values.length == 1) {
                 parameters.put(paramName, values[0]);
             } else {
@@ -40,24 +41,27 @@ public abstract class FrameworkServlet extends HttpServlet {
     }
 
     private void invokeSaveMethod(Map<String, Object> parameters) throws Exception {
-        Method saveMethod = null;
-
         Method[] methods = this.getClass().getDeclaredMethods();
+        
         for (Method method : methods) {
             if ("save".equals(method.getName())) {
-                Class<?>[] paramTypes = method.getParameterTypes();
-                if (paramTypes.length == 1 && paramTypes[0] == Map.class) {
-                    saveMethod = method;
-                    break;
+                Parameter[] params = method.getParameters();
+                
+                if (params.length == 1 && params[0].isAnnotationPresent(EntityParam.class)) {
+                    Class<?> entityClass = params[0].getType();
+                    Object entity = ObjectMapper.mapToObject(parameters, entityClass);
+                    method.invoke(this, entity);
+                    return;
+                }
+                
+                if (params.length == 1 && params[0].getType() == Map.class) {
+                    method.invoke(this, parameters);
+                    return;
                 }
             }
         }
-
-        if (saveMethod != null) {
-            saveMethod.invoke(this, parameters);
-        } else {
-            throw new NoSuchMethodException("Méthode save(Map<String, Object>) non trouvée");
-        }
+        
+        throw new NoSuchMethodException("Méthode save(@EntityParam) ou save(Map) non trouvée");
     }
 
     @Override
